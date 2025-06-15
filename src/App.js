@@ -1,5 +1,5 @@
 import React from 'react';
-import CyberSecurityPlatform from './CyberSecurityPlatform'; // Adjust path if your file is in a different location
+import CyberSecurityPlatform from './CyberSecurityPlatform.tsx'; // Adjust path if your file is in a different location
 
 function App() {
   return (
