@@ -15,7 +15,7 @@
     "lucide-react": "^0.515.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "react-scripts": "5.0.1",
+    "react-scripts": "^0.0.0",
     "typescript": "^5.8.3",
     "web-vitals": "^2.1.4"
   },
@@ -46,7 +46,7 @@
   "devDependencies": {
     "autoprefixer": "^10.4.21",
     "init": "^0.1.2",
-    "npx": "^10.2.2",
+    "npx": "^3.0.0",
     "postcss": "^8.5.5",
     "tailwindcss": "^4.1.10"
   }
