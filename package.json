@@ -1,5 +1,5 @@
 {
-  "name": "cybersecurity-platform-app",
+  "name": "syncbridge-security-app",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
@@ -7,21 +7,27 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^13.5.0",
-    "@types/jest": "^29.5.14",
-    "@types/node": "^24.0.1",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "firebase": "^11.9.1",
-    "lucide-react": "^0.515.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
-    "react-scripts": "^0.0.0",
-    "typescript": "^5.8.3",
+    "@types/jest": "^27.5.2",
+    "@types/node": "^16.18.126",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "firebase": "^10.12.3",
+    "lucide-react": "^0.306.0", 
+    "oidc-client": "^1.11.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5",
     "web-vitals": "^2.1.4"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.32",
+    "autoprefixer": "^10.4.16"
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "tailwindcss -i ./src/index.css -o ./dist/output.css --watch",
+    "build": "npm ci && react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
   },
@@ -42,7 +48,8 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
+  }
+},
   "devDependencies": {
     "autoprefixer": "^10.4.21",
     "init": "^0.1.2",
