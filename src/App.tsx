@@ -2117,7 +2117,7 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
     // is assigned the result of a hook and then immediately passed as a prop,
     // as it doesn't "see" the usage within the prop.
     // No change is needed here, as the function IS used.
-    const navigateToWelcome = useCallback(() => setCurrentView('welcome'), []);
+    
     const navigateToGetStarted = useCallback(() => setCurrentView('getStarted'), []);
     const navigateToLoginSignupChoice = useCallback(() => setCurrentView('loginSignupChoice'), []);
     const navigateToLogin = useCallback(() => setCurrentView('login'), []);
