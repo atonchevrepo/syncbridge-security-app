@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, createContext, useCallback, useRef } from 'react';
-
+// initiate azure completion with this comment cloud deployment 
 // Import Firebase modules for client-side integration
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
