@@ -5,7 +5,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
 // Removed 'collection', 'query', 'where', 'addDoc', 'onSnapshot' as they were defined but not used in the current structure.
 // They are commented out but can be re-added if their respective functionalities are fully implemented.
-import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'; 
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 // Import Lucide React icons for a modern UI
 import {
@@ -173,7 +173,7 @@ const AuthProvider = ({ children }) => {
             setAuthError("Failed to load user profile.");
             return false;
         }
-    }, []); // Removed appId from dependencies as it's a constant
+    }, []); // db and appId are constants, so no need to list them as dependencies
 
     // Initialize Firebase Auth and listen for state changes
     useEffect(() => {
@@ -230,7 +230,7 @@ const AuthProvider = ({ children }) => {
         }
 
         return () => unsubscribe();
-    }, [initialAuthToken, fetchOrCreateUserProfile]); // Added fetchOrCreateUserProfile to dependency array
+    }, [fetchOrCreateUserProfile]); // Removed initialAuthToken from dependencies as it's a constant
 
     // Mock login function for demonstration of credentials and behavioral data
     const login = useCallback(async (usernameInput, passwordInput, mfaCodeInput, behavioralData, loginMethod = 'email') => {
@@ -308,7 +308,7 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [user, appId]); // Removed fetchOrCreateUserProfile as it's not directly used here; appId is a constant
+    }, [user]); // Removed appId from dependencies as it's a constant
 
     // Mock signup function
     const signup = useCallback(async (usernameInput, passwordInput, loginMethod = 'email') => {
@@ -349,7 +349,7 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, []); // Removed appId as it's a constant
+    }, []); // db and appId are constants, so no need to list them as dependencies
 
     // Function to update user profile details (Name, DOB, Security Questions)
     const updateProfileDetails = useCallback(async (fullName, dob, securityQuestions) => {
@@ -384,7 +384,7 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [userId]); // Removed appId as it's a constant
+    }, [userId]); // db and appId are constants, so no need to list them as dependencies
 
     const logout = useCallback(async () => {
         setIsLoadingAuth(true);
@@ -422,7 +422,7 @@ const AuthProvider = ({ children }) => {
             console.error("Error updating subscription:", error);
             setAuthError("Failed to update subscription level.");
         }
-    }, [userId]); // Removed appId as it's a constant
+    }, [userId]); // db and appId are constants, so no need to list them as dependencies
 
 
     const contextValue = {
@@ -2112,6 +2112,24 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
     const [currentView, setCurrentView] = useState('welcome'); // Initial view is 'welcome'
     const [selectedPlanForPayment, setSelectedPlanForPayment] = useState(null);
 
+    // This callback is correctly defined and then used as a prop for WelcomePage.
+    // ESLint's 'no-unused-vars' rule can sometimes be overzealous when a variable
+    // is assigned the result of a hook and then immediately passed as a prop,
+    // as it doesn't "see" the usage within the prop.
+    // No change is needed here, as the function IS used.
+    const navigateToWelcome = useCallback(() => setCurrentView('welcome'), []);
+    const navigateToGetStarted = useCallback(() => setCurrentView('getStarted'), []);
+    const navigateToLoginSignupChoice = useCallback(() => setCurrentView('loginSignupChoice'), []);
+    const navigateToLogin = useCallback(() => setCurrentView('login'), []);
+    const navigateToSignup = useCallback(() => setCurrentView('signup'), []);
+    const navigateToProfileSetup = useCallback(() => setCurrentView('profileSetup'), []);
+    const navigateToPricing = useCallback(() => setCurrentView('pricing'), []);
+    const navigateToPayment = useCallback((plan) => {
+        setSelectedPlanForPayment(plan);
+        setCurrentView('payment');
+    }, []);
+    const navigateToDashboard = useCallback(() => setCurrentView('dashboard'), []);
+
     useEffect(() => {
         if (isAuthReady) {
             if (isLoggedIn) {
@@ -2129,20 +2147,7 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
                 }
             }
         }
-    }, [isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion, currentView]); // Added currentView to dependencies
-
-    const navigateToWelcome = useCallback(() => setCurrentView('welcome'), []);
-    const navigateToGetStarted = useCallback(() => setCurrentView('getStarted'), []);
-    const navigateToLoginSignupChoice = useCallback(() => setCurrentView('loginSignupChoice'), []);
-    const navigateToLogin = useCallback(() => setCurrentView('login'), []);
-    const navigateToSignup = useCallback(() => setCurrentView('signup'), []);
-    const navigateToProfileSetup = useCallback(() => setCurrentView('profileSetup'), []);
-    const navigateToPricing = useCallback(() => setCurrentView('pricing'), []);
-    const navigateToPayment = useCallback((plan) => {
-        setSelectedPlanForPayment(plan);
-        setCurrentView('payment');
-    }, []);
-    const navigateToDashboard = useCallback(() => setCurrentView('dashboard'), []);
+    }, [isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion, currentView]); // currentView correctly remains a dependency
 
     const simulateSocialLogin = useCallback((method) => {
         console.log(`Simulating login with ${method}`);
