@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useContext, createContext, useCallback, useRef } from 'react';
-// initiate azure completion with this comment cloud deployment 
+
 // Import Firebase modules for client-side integration
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
-import { getFirestore, doc, getDoc, setDoc, updateDoc, collection, query, where, addDoc, onSnapshot } from 'firebase/firestore';
+// Removed 'collection', 'query', 'where', 'addDoc', 'onSnapshot' as they were defined but not used in the current structure.
+// They are commented out but can be re-added if their respective functionalities are fully implemented.
+import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'; 
 
 // Import Lucide React icons for a modern UI
 import {
-    ShieldCheck, User, Lock, Eye, EyeOff, Activity, AlertCircle, TrendingUp, TrendingDown, Info,
+    ShieldCheck, User, Lock, Eye, EyeOff, Activity, AlertCircle, Info,
     MessageSquareText, Loader2, LogOut, CheckCircle, Wifi, Database, Layers, Brain, GitFork, Book,
     Fingerprint, Zap, Globe, Cpu, ShieldAlert, Users, Bell, Code, Key, Settings, Handshake, DollarSign, CreditCard, ArrowRight
+    // Removed 'TrendingUp', 'TrendingDown' as they were defined but not used.
 } from 'lucide-react';
 
 // --- Global Variables (Provided by Canvas Environment) ---
@@ -120,6 +123,58 @@ const AuthProvider = ({ children }) => {
     const [subscriptionLevel, setSubscriptionLevel] = useState('free'); // New state for subscription level
     const [needsProfileCompletion, setNeedsProfileCompletion] = useState(false); // New state to track if profile is complete
 
+    // Function to fetch or create user profile in Firestore
+    const fetchOrCreateUserProfile = useCallback(async (uid) => {
+        if (!uid) return false;
+        const userRef = doc(db, `artifacts/${appId}/users/${uid}/profiles`, 'userProfile');
+        try {
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                const securityScoreData = userData.securityScore || { score: 'Low Risk', details: 'No recent anomalies.' };
+                setSubscriptionLevel(userData.subscription || 'free');
+                setUser({ uid, ...userData, securityScore: securityScoreData });
+                console.log("User profile fetched:", userData);
+                // Return true if profile is considered complete, false otherwise
+                return !!(userData.fullName && userData.dob && userData.securityQuestions);
+            } else {
+                const defaultProfile = {
+                    username: `user_${uid.substring(0, 8)}`,
+                    role: 'guest',
+                    createdAt: new Date().toISOString(),
+                    lastLogin: new Date().toLocaleString(),
+                    behavioralBaseline: {
+                        avgTypingSpeed: 150,
+                        avgPasswordTypingSpeed: 100,
+                        totalMouseDistance: 5000,
+                        mouseClickCount: 20,
+                    },
+                    securityScore: {
+                        score: 'Low Risk',
+                        details: 'Initial assessment based on default baseline. No recent anomalies.'
+                    },
+                    subscription: 'free',
+                    // New fields for profile setup, initially empty
+                    fullName: '',
+                    dob: '',
+                    securityQuestions: [],
+                    loginMethod: 'email', // Default to email for signups via form
+                };
+                console.log(`Attempting to create new user profile for UID: ${uid} at path: ${userRef.path}`);
+                await setDoc(userRef, defaultProfile);
+                console.log("New user profile document set successfully.");
+                setUser({ uid, ...defaultProfile });
+                setSubscriptionLevel('free');
+                console.log("New user profile created:", defaultProfile);
+                return false; // Profile is not complete yet
+            }
+        } catch (error) {
+            console.error("Error fetching/creating user profile:", error);
+            setAuthError("Failed to load user profile.");
+            return false;
+        }
+    }, []); // Removed appId from dependencies as it's a constant
+
     // Initialize Firebase Auth and listen for state changes
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -175,59 +230,7 @@ const AuthProvider = ({ children }) => {
         }
 
         return () => unsubscribe();
-    }, [initialAuthToken]);
-
-    // Function to fetch or create user profile in Firestore
-    const fetchOrCreateUserProfile = useCallback(async (uid) => {
-        if (!uid) return false;
-        const userRef = doc(db, `artifacts/${appId}/users/${uid}/profiles`, 'userProfile');
-        try {
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-                const userData = userSnap.data();
-                const securityScoreData = userData.securityScore || { score: 'Low Risk', details: 'No recent anomalies.' };
-                setSubscriptionLevel(userData.subscription || 'free');
-                setUser({ uid, ...userData, securityScore: securityScoreData });
-                console.log("User profile fetched:", userData);
-                // Return true if profile is considered complete, false otherwise
-                return !!(userData.fullName && userData.dob && userData.securityQuestions);
-            } else {
-                const defaultProfile = {
-                    username: `user_${uid.substring(0, 8)}`,
-                    role: 'guest',
-                    createdAt: new Date().toISOString(),
-                    lastLogin: new Date().toLocaleString(),
-                    behavioralBaseline: {
-                        avgTypingSpeed: 150,
-                        avgPasswordTypingSpeed: 100,
-                        totalMouseDistance: 5000,
-                        mouseClickCount: 20,
-                    },
-                    securityScore: {
-                        score: 'Low Risk',
-                        details: 'Initial assessment based on default baseline. No recent anomalies.'
-                    },
-                    subscription: 'free',
-                    // New fields for profile setup, initially empty
-                    fullName: '',
-                    dob: '',
-                    securityQuestions: [],
-                    loginMethod: 'email', // Default to email for signups via form
-                };
-                console.log(`Attempting to create new user profile for UID: ${uid} at path: ${userRef.path}`);
-                await setDoc(userRef, defaultProfile);
-                console.log("New user profile document set successfully.");
-                setUser({ uid, ...defaultProfile });
-                setSubscriptionLevel('free');
-                console.log("New user profile created:", defaultProfile);
-                return false; // Profile is not complete yet
-            }
-        } catch (error) {
-            console.error("Error fetching/creating user profile:", error);
-            setAuthError("Failed to load user profile.");
-            return false;
-        }
-    }, [appId]);
+    }, [initialAuthToken, fetchOrCreateUserProfile]); // Added fetchOrCreateUserProfile to dependency array
 
     // Mock login function for demonstration of credentials and behavioral data
     const login = useCallback(async (usernameInput, passwordInput, mfaCodeInput, behavioralData, loginMethod = 'email') => {
@@ -305,7 +308,7 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [fetchOrCreateUserProfile, user, appId]);
+    }, [user, appId]); // Removed fetchOrCreateUserProfile as it's not directly used here; appId is a constant
 
     // Mock signup function
     const signup = useCallback(async (usernameInput, passwordInput, loginMethod = 'email') => {
@@ -346,7 +349,7 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [appId]);
+    }, []); // Removed appId as it's a constant
 
     // Function to update user profile details (Name, DOB, Security Questions)
     const updateProfileDetails = useCallback(async (fullName, dob, securityQuestions) => {
@@ -381,8 +384,7 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [userId, appId]);
-
+    }, [userId]); // Removed appId as it's a constant
 
     const logout = useCallback(async () => {
         setIsLoadingAuth(true);
@@ -420,7 +422,7 @@ const AuthProvider = ({ children }) => {
             console.error("Error updating subscription:", error);
             setAuthError("Failed to update subscription level.");
         }
-    }, [userId, appId]);
+    }, [userId]); // Removed appId as it's a constant
 
 
     const contextValue = {
@@ -644,6 +646,7 @@ const AIChatbot = ({ prompt }) => {
     }, [prompt]);
 
     useEffect(() => {
+        // Automatically generate response when prompt changes, or on component mount if prompt exists
         if (prompt) {
             generateResponse();
         }
@@ -1863,20 +1866,23 @@ const InnovativeDesignsModule = () => {
 
 
 // --- Dashboard Component ---
+// This component acts as the main authenticated view, displaying user info
+// and providing navigation to different cybersecurity modules.
 const Dashboard = () => {
     const { user, logout, userId, subscriptionLevel } = useAuth();
     const [securityTipPrompt, setSecurityTipPrompt] = useState('');
     const [alertExplanationPrompt, setAlertExplanationPrompt] = useState('');
-    const [activeModule, setActiveModule] = useState('overview');
+    const [activeModule, setActiveModule] = useState('overview'); // State for active module view
 
     useEffect(() => {
+        // Generate a dynamic prompt for the AI security tip based on mock security score
         if (user && user.securityScore) {
             let prompt = `Provide a concise cybersecurity tip for a user with a ${user.securityScore.score} security risk score. Focus on practical steps related to identity protection and secure authentication.`;
             if (user.securityScore.score === 'High Risk') {
                 prompt += " Emphasize immediate actions to secure their account.";
             } else if (user.securityScore.score === 'Medium Risk') {
                 prompt += " Suggest proactive measures to improve security posture.";
-            } else {
+            } else { // Low Risk
                 prompt += " Offer a general best practice for ongoing security awareness.";
             }
             setSecurityTipPrompt(prompt);
@@ -1884,6 +1890,7 @@ const Dashboard = () => {
     }, [user]);
 
     const handleGenerateMockAlert = useCallback(() => {
+        // Simulate a mock security alert and ask AI to explain it
         const mockAlerts = [
             "Unusual login attempt detected from new geographic location. IP: 203.0.113.45 (Nigeria).",
             "Multiple failed login attempts detected for your account in a short period.",
@@ -1897,6 +1904,7 @@ const Dashboard = () => {
 
     const allowedModules = SUBSCRIPTION_PLANS[subscriptionLevel]?.allowedModules || ['overview'];
 
+    // Function to render the active module component
     const renderActiveModule = () => {
         switch (activeModule) {
             case 'fraud-detection':
@@ -1911,6 +1919,8 @@ const Dashboard = () => {
                 return <InnovativeDesignsModule />;
             case 'overview':
             default:
+                // Safely access user.securityScore.score and user.securityScore.details
+                // Ensure user and user.securityScore are not null before accessing properties
                 const userScore = user?.securityScore?.score || 'Low Risk';
                 const userDetails = user?.securityScore?.details || 'No significant behavioral anomalies detected.';
 
@@ -1922,10 +1932,11 @@ const Dashboard = () => {
                                 <h3 className="text-2xl font-semibold text-indigo-800 flex items-center mb-4">
                                     <User className="mr-2" size={24} /> User Profile
                                 </h3>
+                                {/* Ensure user is not null before accessing its properties */}
                                 {user && (
                                     <>
                                         <p className="text-gray-700 mb-2"><span className="font-medium">Username:</span> {user.username}</p>
-                                        <p className="text-gray-700 mb-2 break-all"><span className="font-medium">User ID:</span> {userId}</p>
+                                        <p className="text-gray-700 mb-2 break-all"><span className="font-medium">User ID:</span> {userId}</p> {/* MANDATORY: Display User ID */}
                                         <p className="text-gray-700 mb-2"><span className="font-medium">Role:</span> {user.role}</p>
                                         <p className="text-gray-700 mb-2"><span className="font-medium">Current Plan:</span> <span className="font-bold text-indigo-700">{SUBSCRIPTION_PLANS[subscriptionLevel]?.name}</span></p>
                                         {user.fullName && <p className="text-gray-700 mb-2"><span className="font-medium">Full Name:</span> {user.fullName}</p>}
@@ -2094,10 +2105,9 @@ const Dashboard = () => {
     );
 };
 
-
 // --- Main App Component (AuthRouter) ---
 // Manages routing between Welcome, Get Started, Login/Signup, Profile Setup, Pricing, Payment, and Dashboard
-const AuthRouter = () => {
+const AuthRouter = () => { // Renamed from 'App' to avoid collision
     const { isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion } = useAuth();
     const [currentView, setCurrentView] = useState('welcome'); // Initial view is 'welcome'
     const [selectedPlanForPayment, setSelectedPlanForPayment] = useState(null);
@@ -2119,7 +2129,7 @@ const AuthRouter = () => {
                 }
             }
         }
-    }, [isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion]);
+    }, [isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion, currentView]); // Added currentView to dependencies
 
     const navigateToWelcome = useCallback(() => setCurrentView('welcome'), []);
     const navigateToGetStarted = useCallback(() => setCurrentView('getStarted'), []);
@@ -2173,7 +2183,7 @@ const AuthRouter = () => {
             console.error("Mock social login failed:", error);
         });
 
-    }, [appId]);
+    }, []); // Removed appId from dependencies as it's a constant
 
 
     if (!isAuthReady) {
@@ -2227,7 +2237,7 @@ const AuthRouter = () => {
 export default function App() {
     return (
         <AuthProvider>
-            <AuthRouter />
+            <AuthRouter /> {/* Now renders AuthRouter */}
         </AuthProvider>
     );
 }
