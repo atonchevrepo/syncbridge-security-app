@@ -3,8 +3,6 @@ import React, { useState, useEffect, useContext, createContext, useCallback, use
 // Import Firebase modules for client-side integration
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signOut } from 'firebase/auth';
-// Removed 'collection', 'query', 'where', 'addDoc', 'onSnapshot' as they were defined but not used in the current structure.
-// They are commented out but can be re-added if their respective functionalities are fully implemented.
 import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 // Import Lucide React icons for a modern UI
@@ -12,22 +10,21 @@ import {
     ShieldCheck, User, Lock, Eye, EyeOff, Activity, AlertCircle, Info,
     MessageSquareText, Loader2, LogOut, CheckCircle, Wifi, Database, Layers, Brain, GitFork, Book,
     Fingerprint, Zap, Globe, Cpu, ShieldAlert, Users, Bell, Code, Key, Settings, Handshake, DollarSign, CreditCard, ArrowRight
-    // Removed 'TrendingUp', 'TrendingDown' as they were defined but not used.
 } from 'lucide-react';
 
 // --- Global Variables (Provided by Canvas Environment) ---
+// IMPORTANT: Rely directly on __app_id and __firebase_config provided by the environment.
+// If these are not correctly populated, you must configure them in your Canvas environment settings.
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'syncbridge-default-app';
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-    apiKey: "REPLACE_YOUR_FIREBASE_API_KEY",
-    authDomain: "REPLACE_YOUR_FIREBASE_AUTH_DOMAIN",
-    projectId: "REPLACE_YOUR_FIREBASE_PROJECT_ID",
-    storageBucket: "REPLACE_YOUR_FIREBASE_STORAGE_BUCKET",
-    messagingSenderId: "REPLACE_YOUR_FIREBASE_MESSAGING_SENDER_ID",
-    appId: "REPLACE_YOUR_FIREBASE_APP_ID"
-};
+const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+
+// Log configuration for debugging purposes (will show if it's null or contains placeholders)
+console.log("Firebase Config provided by environment:", firebaseConfig);
+console.log("App ID provided by environment:", appId);
+
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-// IMPORTANT: Firestore Security Rules Configuration
+// IMPORTANT: Firebase Security Rules Configuration
 // The "Missing or insufficient permissions" error indicates that your Firestore Security Rules
 // are preventing write access. You MUST configure these rules in your Firebase Console.
 // Go to Firestore -> Rules tab and paste the following:
@@ -50,9 +47,19 @@ service cloud.firestore {
 // Ensure 'userId' in your Firestore path matches 'request.auth.uid' as demonstrated above.
 
 // Initialize Firebase App
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-const auth = getAuth(app);
+let app;
+let db;
+let auth;
+
+// Only initialize Firebase if firebaseConfig is valid.
+if (firebaseConfig && firebaseConfig.apiKey && firebaseConfig.projectId) {
+    app = initializeApp(firebaseConfig);
+    db = getFirestore(app);
+    auth = getAuth(app);
+    console.log("Firebase services initialized.");
+} else {
+    console.error("Firebase configuration is missing or invalid. Cannot initialize Firebase services.");
+}
 
 // --- Constants & Helper Functions ---
 const MIN_PASSWORD_LENGTH = 8;
@@ -125,7 +132,10 @@ const AuthProvider = ({ children }) => {
 
     // Function to fetch or create user profile in Firestore
     const fetchOrCreateUserProfile = useCallback(async (uid) => {
-        if (!uid) return false;
+        if (!uid || !db) {
+            console.error("Firestore DB not initialized or UID missing.");
+            return false;
+        }
         const userRef = doc(db, `artifacts/${appId}/users/${uid}/profiles`, 'userProfile');
         try {
             const userSnap = await getDoc(userRef);
@@ -136,7 +146,7 @@ const AuthProvider = ({ children }) => {
                 setUser({ uid, ...userData, securityScore: securityScoreData });
                 console.log("User profile fetched:", userData);
                 // Return true if profile is considered complete, false otherwise
-                return !!(userData.fullName && userData.dob && userData.securityQuestions);
+                return !!(userData.fullName && userData.dob && userData.securityQuestions && userData.securityQuestions.length > 0);
             } else {
                 const defaultProfile = {
                     username: `user_${uid.substring(0, 8)}`,
@@ -173,18 +183,26 @@ const AuthProvider = ({ children }) => {
             setAuthError("Failed to load user profile.");
             return false;
         }
-    }, []); // db and appId are constants, so no need to list them as dependencies
+    }, []); // Removed appId from dependencies as it's a constant. db is also a constant.
 
     // Initialize Firebase Auth and listen for state changes
     useEffect(() => {
+        // Ensure auth object is initialized before proceeding
+        if (!auth) {
+            console.warn("Firebase Auth not initialized, skipping auth state listener.");
+            setIsLoadingAuth(false);
+            setIsAuthReady(true);
+            return;
+        }
+
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
             if (firebaseUser) {
                 setUserId(firebaseUser.uid);
                 const profileComplete = await fetchOrCreateUserProfile(firebaseUser.uid);
                 setIsLoggedIn(true);
-                // If profile is not complete, set flag to redirect to profile setup
                 setNeedsProfileCompletion(!profileComplete);
             } else {
+                // Only try anonymous sign-in if no custom token is provided
                 if (!initialAuthToken) {
                     try {
                         const anonUserCredential = await signInAnonymously(auth);
@@ -201,6 +219,7 @@ const AuthProvider = ({ children }) => {
                         setNeedsProfileCompletion(false);
                     }
                 } else {
+                    // If initialAuthToken was present but sign-in failed, or user logged out
                     setIsLoggedIn(false);
                     setUserId(null);
                     setUser(null);
@@ -211,6 +230,7 @@ const AuthProvider = ({ children }) => {
             setIsAuthReady(true);
         });
 
+        // Attempt custom token sign-in if provided and no current user
         if (initialAuthToken && !auth.currentUser) {
             signInWithCustomToken(auth, initialAuthToken)
                 .then(async (userCredential) => {
@@ -225,17 +245,25 @@ const AuthProvider = ({ children }) => {
                     setIsAuthReady(true);
                 });
         } else if (!auth.currentUser) {
+            // If no custom token and no current user, immediately set ready (anonymous might have failed or not attempted)
             setIsLoadingAuth(false);
             setIsAuthReady(true);
         }
 
         return () => unsubscribe();
-    }, [fetchOrCreateUserProfile]); // Removed initialAuthToken from dependencies as it's a constant
+    }, [fetchOrCreateUserProfile]); // initialAuthToken is a constant, so no need for it in dependency array
 
     // Mock login function for demonstration of credentials and behavioral data
     const login = useCallback(async (usernameInput, passwordInput, mfaCodeInput, behavioralData, loginMethod = 'email') => {
         setIsLoadingAuth(true);
         setAuthError('');
+        // Ensure db is initialized before proceeding with Firestore operations
+        if (!db) {
+            setAuthError("Database not initialized. Please check Firebase configuration.");
+            setIsLoadingAuth(false);
+            return { success: false, error: 'Database not initialized' };
+        }
+
         try {
             await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -308,12 +336,19 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [user]); // Removed appId from dependencies as it's a constant
+    }, [user]); // Removed appId from dependencies as it's a constant. db is also a constant.
 
     // Mock signup function
     const signup = useCallback(async (usernameInput, passwordInput, loginMethod = 'email') => {
         setIsLoadingAuth(true);
         setAuthError('');
+        // Ensure db is initialized before proceeding with Firestore operations
+        if (!db) {
+            setAuthError("Database not initialized. Please check Firebase configuration.");
+            setIsLoadingAuth(false);
+            return { success: false, error: 'Database not initialized' };
+        }
+
         try {
             await new Promise(resolve => setTimeout(resolve, 1500));
             const mockUid = `mock_user_${Date.now()}`;
@@ -349,12 +384,17 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, []); // db and appId are constants, so no need to list them as dependencies
+    }, []); // Removed appId from dependencies as it's a constant. db is also a constant.
 
     // Function to update user profile details (Name, DOB, Security Questions)
     const updateProfileDetails = useCallback(async (fullName, dob, securityQuestions) => {
         if (!userId) {
             setAuthError("No user logged in to update profile.");
+            return false;
+        }
+        // Ensure db is initialized before proceeding with Firestore operations
+        if (!db) {
+            setAuthError("Database not initialized. Please check Firebase configuration.");
             return false;
         }
         setIsLoadingAuth(true);
@@ -384,11 +424,17 @@ const AuthProvider = ({ children }) => {
         } finally {
             setIsLoadingAuth(false);
         }
-    }, [userId]); // db and appId are constants, so no need to list them as dependencies
+    }, [userId]); // Removed appId from dependencies as it's a constant. db is also a constant.
 
     const logout = useCallback(async () => {
         setIsLoadingAuth(true);
         setAuthError('');
+        // Ensure auth is initialized before proceeding
+        if (!auth) {
+            console.warn("Firebase Auth not initialized, cannot log out.");
+            setIsLoadingAuth(false);
+            return;
+        }
         try {
             await signOut(auth);
             setIsLoggedIn(false);
@@ -407,6 +453,11 @@ const AuthProvider = ({ children }) => {
 
     const updateSubscription = useCallback(async (newLevel) => {
         if (!userId) return;
+        // Ensure db is initialized before proceeding with Firestore operations
+        if (!db) {
+            setAuthError("Database not initialized. Please check Firebase configuration.");
+            return;
+        }
         const userProfileRef = doc(db, `artifacts/${appId}/users/${userId}/profiles`, 'userProfile');
         try {
             console.log(`Attempting to update subscription for UID: ${userId} to ${newLevel} at path: ${userProfileRef.path}`);
@@ -422,7 +473,7 @@ const AuthProvider = ({ children }) => {
             console.error("Error updating subscription:", error);
             setAuthError("Failed to update subscription level.");
         }
-    }, [userId]); // db and appId are constants, so no need to list them as dependencies
+    }, [userId]); // Removed appId from dependencies as it's a constant. db is also a constant.
 
 
     const contextValue = {
@@ -504,7 +555,7 @@ const useBehavioralBiometrics = () => {
         setMouseMovement({ x: 0, y: 0, count: 0, distance: 0 });
         setPasswordInputTimes([]);
         lastKeyPressTime.current = 0;
-        lastMouseMovePosition.current = { x: 0, y: 0 };
+        lastMouseMovePosition.current = 0; // Resetting to 0
     }, []);
 
     const getBehavioralScore = useCallback(() => {
@@ -710,6 +761,8 @@ const GetStartedPage = ({ navigateToLoginSignupChoice }) => {
 
 // --- Login/Signup Choice Component ---
 const LoginSignupChoice = ({ navigateToLogin, navigateToSignup, simulateSocialLogin }) => {
+    const { isAuthReady } = useAuth(); // Use isAuthReady to disable buttons if auth is not ready
+
     return (
         <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-800 to-blue-900 p-4">
             <div className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md border border-gray-200 text-center">
@@ -719,12 +772,14 @@ const LoginSignupChoice = ({ navigateToLogin, navigateToSignup, simulateSocialLo
                     <button
                         onClick={navigateToLogin}
                         className="w-full flex items-center justify-center py-3 px-4 border border-transparent rounded-md shadow-sm text-lg font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition ease-in-out duration-150 transform hover:scale-105"
+                        disabled={!isAuthReady}
                     >
                         <User className="mr-3" size={20} /> Log In with Email
                     </button>
                     <button
                         onClick={navigateToSignup}
                         className="w-full flex items-center justify-center py-3 px-4 border border-indigo-600 rounded-md shadow-sm text-lg font-medium text-indigo-600 bg-white hover:bg-indigo-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition ease-in-out duration-150 transform hover:scale-105"
+                        disabled={!isAuthReady}
                     >
                         <Lock className="mr-3" size={20} /> Sign Up with Email
                     </button>
@@ -738,6 +793,7 @@ const LoginSignupChoice = ({ navigateToLogin, navigateToSignup, simulateSocialLo
                     <button
                         onClick={() => simulateSocialLogin('Google')}
                         className="w-full flex items-center justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-lg font-medium text-gray-700 bg-white hover:bg-gray-50 transition duration-150 ease-in-out transform hover:scale-105"
+                        disabled={!isAuthReady}
                     >
                         <img src="https://img.icons8.com/color/24/000000/google-logo.png" alt="Google" className="mr-3" />
                         Login with Google (Mock)
@@ -745,6 +801,7 @@ const LoginSignupChoice = ({ navigateToLogin, navigateToSignup, simulateSocialLo
                     <button
                         onClick={() => simulateSocialLogin('GitHub')}
                         className="w-full flex items-center justify-center py-3 px-4 border border-gray-300 rounded-md shadow-sm text-lg font-medium text-gray-700 bg-white hover:bg-gray-50 transition duration-150 ease-in-out transform hover:scale-105"
+                        disabled={!isAuthReady}
                     >
                         <img src="https://img.icons8.com/ios-filled/24/000000/github.png" alt="GitHub" className="mr-3" />
                         Login with GitHub (Mock)
@@ -2107,17 +2164,12 @@ const Dashboard = () => {
 
 // --- Main App Component (AuthRouter) ---
 // Manages routing between Welcome, Get Started, Login/Signup, Profile Setup, Pricing, Payment, and Dashboard
-const AuthRouter = () => { // Renamed from 'App' to avoid collision
+const AuthRouter = () => {
     const { isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion } = useAuth();
-    const [currentView, setCurrentView] = useState('welcome'); // Initial view is 'welcome'
+    const [currentView, setCurrentView] = useState('welcome');
     const [selectedPlanForPayment, setSelectedPlanForPayment] = useState(null);
 
-    // This callback is correctly defined and then used as a prop for WelcomePage.
-    // ESLint's 'no-unused-vars' rule can sometimes be overzealous when a variable
-    // is assigned the result of a hook and then immediately passed as a prop,
-    // as it doesn't "see" the usage within the prop.
-    // No change is needed here, as the function IS used.
-    
+    const navigateToWelcome = useCallback(() => setCurrentView('welcome'), []);
     const navigateToGetStarted = useCallback(() => setCurrentView('getStarted'), []);
     const navigateToLoginSignupChoice = useCallback(() => setCurrentView('loginSignupChoice'), []);
     const navigateToLogin = useCallback(() => setCurrentView('login'), []);
@@ -2136,23 +2188,34 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
                 if (needsProfileCompletion) {
                     setCurrentView('profileSetup');
                 } else if (subscriptionLevel === 'free') {
-                    setCurrentView('pricing'); // Redirect free users to pricing to encourage upgrade or proceed with free
+                    setCurrentView('pricing');
                 } else {
                     setCurrentView('dashboard');
                 }
             } else {
-                // If not logged in, ensure we are on a public entry point
                 if (!['welcome', 'getStarted', 'loginSignupChoice', 'login', 'signup'].includes(currentView)) {
                     setCurrentView('welcome');
                 }
             }
         }
-    }, [isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion, currentView]); // currentView correctly remains a dependency
+    }, [isLoggedIn, isAuthReady, subscriptionLevel, needsProfileCompletion, currentView]);
 
-    const simulateSocialLogin = useCallback((method) => {
+    const simulateSocialLogin = useCallback(async (method) => {
         console.log(`Simulating login with ${method}`);
-        auth.signInAnonymously().then(async (userCredential) => {
+        // Ensure auth is initialized before using it
+        if (!auth) {
+            console.error("Firebase Auth not initialized, cannot simulate social login.");
+            return;
+        }
+        try {
+            const userCredential = await signInAnonymously(auth); // Use the globally available auth
             const uid = userCredential.user.uid;
+            // Ensure db is initialized before proceeding with Firestore operations
+            if (!db) {
+                console.error("Firebase DB not initialized, cannot create user profile.");
+                return;
+            }
+
             const userRef = doc(db, `artifacts/${appId}/users/${uid}/profiles`, 'userProfile');
             const userSnap = await getDoc(userRef);
 
@@ -2184,11 +2247,10 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
                     setCurrentView('dashboard');
                 }
             }
-        }).catch(error => {
+        } catch (error) {
             console.error("Mock social login failed:", error);
-        });
-
-    }, []); // Removed appId from dependencies as it's a constant
+        }
+    }, []);
 
 
     if (!isAuthReady) {
@@ -2220,7 +2282,6 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
         case 'profileSetup':
             return <ProfileSetupPage navigateToPricing={navigateToPricing} />;
         case 'pricing':
-            // Pass navigateToDashboard to PricingModel so it can send free users to dashboard
             return <PricingModel navigateToPayment={navigateToPayment} navigateToDashboard={navigateToDashboard} />;
         case 'payment':
             if (!selectedPlanForPayment) {
@@ -2242,7 +2303,7 @@ const AuthRouter = () => { // Renamed from 'App' to avoid collision
 export default function App() {
     return (
         <AuthProvider>
-            <AuthRouter /> {/* Now renders AuthRouter */}
+            <AuthRouter />
         </AuthProvider>
     );
 }
